@@ -6,7 +6,7 @@ on:
       MANIFEST_BRANCH:
         description: 'TWRP Manifest Branch'
         required: true
-        default: 'twrp-14.1'
+        default: 'twrp-4.4-deprecated'
         type: choice
         options:
         - twrp-14.1
@@ -15,7 +15,6 @@ on:
         - twrp-10.0-deprecated
         - twrp-9.0
         - twrp-8.1
-        - twrp-8.1-macOS
         - twrp-7.1
         - twrp-6.0
         - twrp-5.1
@@ -63,15 +62,12 @@ jobs:
     # ---------------------------------------------------------
     # Checkout builder repository
     # ---------------------------------------------------------
-
     - name: Check Out
       uses: actions/checkout@v4
-
 
     # ---------------------------------------------------------
     # Display inputs
     # ---------------------------------------------------------
-
     - name: Display Inputs
       run: |
         echo "Displaying variables/inputs."
@@ -80,29 +76,23 @@ jobs:
         echo "Device Tree Branch: main"
         echo "Build Target: ${{ inputs.BUILD_TARGET }}"
 
-
     # ---------------------------------------------------------
     # Cleanup
     # ---------------------------------------------------------
-
     - name: Cleanup
       uses: rokibhasansagar/slimhub_actions@main
-
 
     # ---------------------------------------------------------
     # Set Swap
     # ---------------------------------------------------------
-
     - name: Set Swap Space
       uses: pierotofy/set-swap-space@master
       with:
         swap-size-gb: 20
 
-
     # ---------------------------------------------------------
     # Select TWRP manifest
     # ---------------------------------------------------------
-
     - name: Check Manifest Branch
       run: |
         if [ "${{ inputs.MANIFEST_BRANCH }}" = "twrp-11" ] || \
@@ -119,11 +109,9 @@ jobs:
 
         fi
 
-
     # ---------------------------------------------------------
     # Prepare build environment
     # ---------------------------------------------------------
-
     - name: Prepare the environment
       run: |
         sudo apt update
@@ -172,22 +160,18 @@ jobs:
           repo \
           git
 
-
     # ---------------------------------------------------------
     # Java
     # ---------------------------------------------------------
-
     - name: Install OpenJDK
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '8'
 
-
     # ---------------------------------------------------------
     # Install Repo
     # ---------------------------------------------------------
-
     - name: Install Git-Repo
       run: |
         mkdir -p ~/bin
@@ -202,11 +186,9 @@ jobs:
 
         repo --version
 
-
     # ---------------------------------------------------------
     # Initialize Android/TWRP source
     # ---------------------------------------------------------
-
     - name: Initialize Repo
       run: |
         mkdir -p android-recovery
@@ -223,11 +205,35 @@ jobs:
           -u "${{ env.MANIFEST }}" \
           -b "${{ inputs.MANIFEST_BRANCH }}"
 
+    # ---------------------------------------------------------
+    # Add PAD_D85 device tree to repo local manifest
+    # This is the FIX for roomservice error
+    # ---------------------------------------------------------
+    - name: Add PAD_D85 to Local Manifest
+      run: |
+        cd android-recovery
+
+        mkdir -p .repo/local_manifests
+
+        cat > .repo/local_manifests/PAD_D85.xml <<'XMLEOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <manifest>
+          <remote name="github" fetch="https://github.com/" />
+          <project name="saidanimelek26/PAD_D85"
+                   path="device/alps/PAD_D85"
+                   remote="github"
+                   revision="main" />
+        </manifest>
+        XMLEOF
+
+        echo "======================================"
+        echo "Local manifest created:"
+        echo "======================================"
+        cat .repo/local_manifests/PAD_D85.xml
 
     # ---------------------------------------------------------
-    # Sync TWRP source
+    # Sync TWRP source + device tree
     # ---------------------------------------------------------
-
     - name: Repo Sync
       run: |
         cd android-recovery
@@ -236,11 +242,9 @@ jobs:
           -j$(nproc --all) \
           --force-sync
 
-
     # ---------------------------------------------------------
     # Guava dependency for TWRP 14.1
     # ---------------------------------------------------------
-
     - name: Ensure Guava dependency exists
       if: inputs.MANIFEST_BRANCH == 'twrp-14.1'
       run: |
@@ -265,37 +269,9 @@ jobs:
 
         fi
 
-
     # ---------------------------------------------------------
-    # Clone PAD_D85 Device Tree
+    # Verify Device Tree
     # ---------------------------------------------------------
-
-    - name: Clone Device Tree
-      run: |
-        cd android-recovery
-
-        mkdir -p device/alps
-
-        git clone \
-          --depth=1 \
-          https://github.com/saidanimelek26/PAD_D85 \
-          device/alps/PAD_D85
-
-        cd device/alps/PAD_D85
-
-        echo "Device Tree:"
-        pwd
-
-        echo "Device Tree Commit:"
-        git rev-parse HEAD
-
-        echo "COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
-
-
-    # ---------------------------------------------------------
-    # Show Device Tree
-    # ---------------------------------------------------------
-
     - name: Verify Device Tree
       run: |
         cd android-recovery
@@ -310,11 +286,15 @@ jobs:
         echo "Device Tree structure:"
         tree -L 2 device/alps/PAD_D85 || true
 
+        echo ""
+        echo "Device Tree Commit:"
+        cd device/alps/PAD_D85
+        git rev-parse HEAD
+        echo "COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
     # ---------------------------------------------------------
     # Legacy Python 2
     # ---------------------------------------------------------
-
     - name: Installing python2 for legacy builds
       if: env.CHECK_LEGACY_BRANCH == 'true'
       run: |
@@ -328,11 +308,9 @@ jobs:
 
         sudo ln -sf /usr/bin/python2.7 /usr/bin/python2
 
-
     # ---------------------------------------------------------
     # Detect device configuration
     # ---------------------------------------------------------
-
     - name: Detect Device Configuration
       run: |
         cd android-recovery/device/alps/PAD_D85
@@ -386,11 +364,9 @@ jobs:
         echo "DEVICE_NAME=$PRODUCT_DEVICE" >> $GITHUB_ENV
         echo "DEVICE_BRAND=$PRODUCT_BRAND" >> $GITHUB_ENV
 
-
     # ---------------------------------------------------------
     # Show build variables
     # ---------------------------------------------------------
-
     - name: Display Device Variables
       run: |
         echo "======================================"
@@ -404,11 +380,9 @@ jobs:
         echo "MANIFEST_BRANCH=${{ inputs.MANIFEST_BRANCH }}"
         echo "COMMIT_ID=${{ env.COMMIT_ID }}"
 
-
     # ---------------------------------------------------------
     # Build TWRP
     # ---------------------------------------------------------
-
     - name: Building Image
       run: |
         cd android-recovery
@@ -450,11 +424,9 @@ jobs:
 
         echo "Done building your ${{ inputs.BUILD_TARGET }}.img"
 
-
     # ---------------------------------------------------------
     # Set build target name
     # ---------------------------------------------------------
-
     - name: Set build target for upload
       run: |
         if [ "${{ inputs.BUILD_TARGET }}" = "recovery" ]; then
@@ -471,20 +443,16 @@ jobs:
 
         fi
 
-
     # ---------------------------------------------------------
     # Build date
     # ---------------------------------------------------------
-
     - name: Set Build Date
       run: |
         echo "BUILD_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
 
-
     # ---------------------------------------------------------
     # Show output files
     # ---------------------------------------------------------
-
     - name: List Build Output
       run: |
         echo "======================================"
@@ -495,11 +463,9 @@ jobs:
           android-recovery/out/target/product/${{ env.DEVICE_NAME }}/ \
           || true
 
-
     # ---------------------------------------------------------
     # Upload Release
     # ---------------------------------------------------------
-
     - name: Upload to Release
       uses: softprops/action-gh-release@v2.3.0
 
@@ -520,11 +486,9 @@ jobs:
           Device Tree: https://github.com/saidanimelek26/PAD_D85
           Commit: ${{ env.COMMIT_ID }}
 
-
     # ---------------------------------------------------------
     # LDCheck
     # ---------------------------------------------------------
-
     - name: Run LDCheck
       if: inputs.LDCHECK == true
       run: |
